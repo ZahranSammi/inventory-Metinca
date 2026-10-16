@@ -7,11 +7,13 @@ use App\Models\Branch;
 use App\Models\Item;
 use App\Models\ItemLoan;
 use App\Models\ItemLocation;
+use App\Models\Room;
 use App\Models\StockMovement;
 use App\Services\AuditLogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -168,10 +170,22 @@ class BarangOperasionalController extends Controller
             if ($type === 'IN') {
                 $stokSesudah = $stokSebelum + $jumlah;
             } elseif ($type === 'OUT') {
-                $stokSesudah = max(0, $stokSebelum - $jumlah);
+                if ($stokSebelum < $jumlah) {
+                    throw ValidationException::withMessages([
+                        'jumlah' => "Jumlah pengurangan ({$jumlah}) melebihi stok master yang tersedia ({$stokSebelum}).",
+                    ]);
+                }
+                $stokSesudah = $stokSebelum - $jumlah;
             } else {
                 // Adjustment sets exact stock to $jumlah or changes it
                 $stokSesudah = $jumlah;
+            }
+
+            $currentAllocated = ItemLocation::where('item_id', $item->id)->sum('jumlah');
+            if ($stokSesudah < $currentAllocated) {
+                throw ValidationException::withMessages([
+                    'jumlah' => "Stok master ({$stokSesudah}) tidak boleh lebih kecil dari total barang yang sedang dialokasikan di ruangan ({$currentAllocated} unit).",
+                ]);
             }
 
             $item->stok = $stokSesudah;
@@ -270,6 +284,11 @@ class BarangOperasionalController extends Controller
 
     public function updateRuanganStok(Request $request): RedirectResponse
     {
+        $user = $request->user();
+        if (! $user->hasRole(['staff_gudang', 'inventarisir', 'manager_gudang', 'staff_accounting', 'manager_accounting', 'direktur_sdm'])) {
+            abort(403, 'Anda tidak berhak memperbarui inventaris ruangan.');
+        }
+
         $validated = $request->validate([
             'item_id' => 'required|exists:items,id',
             'branch_id' => 'required|exists:branches,id',
@@ -278,6 +297,25 @@ class BarangOperasionalController extends Controller
             'kondisi' => 'required|string',
             'keterangan' => 'nullable|string|max:500',
         ]);
+
+        $room = Room::findOrFail($validated['room_id']);
+        if ((int) $room->branch_id !== (int) $validated['branch_id']) {
+            throw ValidationException::withMessages([
+                'room_id' => 'Ruangan yang dipilih tidak terdaftar pada cabang tersebut.',
+            ]);
+        }
+
+        $item = Item::findOrFail($validated['item_id']);
+        $otherAllocations = ItemLocation::where('item_id', $item->id)
+            ->where('room_id', '!=', $validated['room_id'])
+            ->sum('jumlah');
+        $newTotal = $otherAllocations + $validated['jumlah'];
+
+        if ($newTotal > $item->stok) {
+            throw ValidationException::withMessages([
+                'jumlah' => "Total penempatan barang di seluruh ruangan ({$newTotal} {$item->satuan}) melebihi stok master yang tersedia ({$item->stok} {$item->satuan}).",
+            ]);
+        }
 
         $location = ItemLocation::updateOrCreate(
             [
@@ -293,7 +331,7 @@ class BarangOperasionalController extends Controller
         );
 
         AuditLogService::log(
-            $request->user(),
+            $user,
             'UPDATE_ROOM_INVENTORY',
             'ItemLocation',
             $location->id,
@@ -324,19 +362,38 @@ class BarangOperasionalController extends Controller
             });
         }
 
+        if ($request->filled('branch_id') && $request->branch_id !== 'ALL') {
+            $query->whereHas('locations', function ($q) use ($request) {
+                $q->where('branch_id', $request->branch_id);
+            });
+        }
+
+        if ($request->filled('room_id') && $request->room_id !== 'ALL') {
+            $query->whereHas('locations', function ($q) use ($request) {
+                $q->where('room_id', $request->room_id);
+            });
+        }
+
         $items = $query->paginate(15)->withQueryString();
         $branches = Branch::with('rooms')->get();
 
-        $activeLoans = ItemLoan::with(['item', 'fromBranch', 'fromRoom', 'toBranch', 'toRoom', 'borrower'])
-            ->where('status', 'DIPINJAM')
-            ->latest()
-            ->get();
+        $activeLoansQuery = ItemLoan::with(['item', 'fromBranch', 'fromRoom', 'toBranch', 'toRoom', 'borrower'])
+            ->where('status', 'DIPINJAM');
+
+        if ($request->filled('branch_id') && $request->branch_id !== 'ALL') {
+            $activeLoansQuery->where(function ($q) use ($request) {
+                $q->where('from_branch_id', $request->branch_id)
+                    ->orWhere('to_branch_id', $request->branch_id);
+            });
+        }
+
+        $activeLoans = $activeLoansQuery->latest()->get();
 
         return Inertia::render('Barang/Tracking', [
             'items' => $items,
             'branches' => $branches,
             'activeLoans' => $activeLoans,
-            'filters' => $request->only(['search']),
+            'filters' => $request->only(['search', 'branch_id', 'room_id']),
         ]);
     }
 }

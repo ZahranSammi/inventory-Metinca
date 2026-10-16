@@ -11,6 +11,8 @@ import {
     SearchIcon,
     XMarkIcon,
 } from '@/Components/Icons';
+import StatusBadge from '@/Components/StatusBadge';
+import Pagination from '@/Components/Pagination';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
@@ -382,6 +384,16 @@ export default function PendataanRuangan({
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+                    {locations?.links && (
+                        <div className="p-4 border-t border-slate-100">
+                            <Pagination
+                                links={locations.links}
+                                from={locations.from}
+                                to={locations.to}
+                                total={locations.total}
+                            />
                         </div>
                     )}
                 </div>

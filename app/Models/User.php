@@ -54,29 +54,8 @@ class User extends Authenticatable
     public function hasRole(string|array $roles): bool
     {
         $targetRoles = is_array($roles) ? $roles : [$roles];
+        $currentRole = $this->role ?? $this->roleModel?->name;
 
-        $aliasMap = [
-            'staff_accounting' => ['staff_accounting', 'staff_gudang'],
-            'staff_gudang' => ['staff_gudang', 'staff_accounting'],
-            'inventarisir' => ['inventarisir'],
-            'manager_accounting' => ['manager_accounting', 'manager_gudang'],
-            'manager_gudang' => ['manager_gudang', 'manager_accounting'],
-            'direktur_sdm' => ['direktur_sdm'],
-            'karyawan' => ['karyawan'],
-        ];
-
-        $effectiveUserRoles = $aliasMap[$this->role] ?? [$this->role];
-
-        foreach ($targetRoles as $target) {
-            if (in_array($target, $effectiveUserRoles, true)) {
-                return true;
-            }
-            $targetAliases = $aliasMap[$target] ?? [$target];
-            if (in_array($this->role, $targetAliases, true)) {
-                return true;
-            }
-        }
-
-        return false;
+        return in_array($currentRole, $targetRoles, true);
     }
 }

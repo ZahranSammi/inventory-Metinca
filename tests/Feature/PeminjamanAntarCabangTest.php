@@ -213,6 +213,14 @@ class PeminjamanAntarCabangTest extends TestCase
 
     public function test_barang_pinjaman_dapat_dikembalikan_oleh_staff(): void
     {
+        ItemLocation::create([
+            'item_id' => $this->itemBangku->id,
+            'branch_id' => $this->branchTambun->id,
+            'room_id' => $this->roomTambunProduksi->id,
+            'jumlah' => 10,
+            'kondisi' => 'Baik',
+        ]);
+
         $loan = $this->createLoan('DIPINJAM', 10);
 
         $response = $this->actingAs($this->staff)->post("/peminjaman/{$loan->id}/kembalikan");

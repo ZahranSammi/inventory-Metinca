@@ -11,6 +11,7 @@ import {
     XMarkIcon,
 } from '@/Components/Icons';
 import StatusBadge from '@/Components/StatusBadge';
+import Pagination from '@/Components/Pagination';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
@@ -18,12 +19,12 @@ import { useMemo, useState } from 'react';
 export default function BarangIndex({ items, categories, stockMovements }) {
     const user = usePage().props.auth.user;
     const canManageItems = [
-        'staff_accounting',
-        'manager_accounting',
-        'direktur_sdm',
         'staff_gudang',
         'inventarisir',
         'manager_gudang',
+        'staff_accounting',
+        'manager_accounting',
+        'direktur_sdm',
     ].includes(user?.role);
 
     const categoryOptions = useMemo(() => {
@@ -220,21 +221,19 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                     <div className="flex items-center gap-2 p-1.5 bg-slate-100/80 rounded-xl text-sm font-semibold">
                         <button
                             onClick={() => setActiveTab('master')}
-                            className={`px-5 py-2.5 rounded-lg transition whitespace-nowrap ${
-                                activeTab === 'master'
+                            className={`px-5 py-2.5 rounded-lg transition whitespace-nowrap ${activeTab === 'master'
                                     ? 'bg-white text-slate-900 shadow-xs font-bold'
                                     : 'text-slate-600 hover:text-slate-900'
-                            }`}
+                                }`}
                         >
                             Data Master Barang ({metrics.totalItems})
                         </button>
                         <button
                             onClick={() => setActiveTab('mutasi')}
-                            className={`px-5 py-2.5 rounded-lg transition whitespace-nowrap ${
-                                activeTab === 'mutasi'
+                            className={`px-5 py-2.5 rounded-lg transition whitespace-nowrap ${activeTab === 'mutasi'
                                     ? 'bg-emerald-600 text-white shadow-xs font-bold'
                                     : 'text-slate-600 hover:text-slate-900'
-                            }`}
+                                }`}
                         >
                             Riwayat Mutasi Stok ({metrics.totalMovements})
                         </button>
@@ -242,26 +241,12 @@ export default function BarangIndex({ items, categories, stockMovements }) {
 
                     {activeTab === 'master' && (
                         <div className="flex flex-wrap items-center gap-3">
-                            <select
-                                value={selectedCategory}
-                                onChange={(e) => setSelectedCategory(e.target.value)}
-                                className="rounded-xl border border-slate-200 text-sm py-2.5 px-3.5 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                            >
-                                <option value="ALL">Semua Kategori</option>
-                                {categoryOptions.map((cat) => (
-                                    <option key={cat} value={cat}>
-                                        {cat}
-                                    </option>
-                                ))}
-                            </select>
-
                             <button
                                 onClick={() => setOnlyLowStock(!onlyLowStock)}
-                                className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition flex items-center gap-2 ${
-                                    onlyLowStock
+                                className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition flex items-center gap-2 ${onlyLowStock
                                         ? 'bg-rose-50 border-rose-300 text-rose-700 font-bold'
                                         : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
+                                    }`}
                             >
                                 <AlertTriangleIcon className="w-4 h-4" />
                                 <span>Stok Kritis Saja</span>
@@ -331,16 +316,14 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                                                     </td>
                                                     <td className="py-4 px-5 align-top">
                                                         <span
-                                                            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full font-bold text-xs sm:text-sm ${
-                                                                isLow
+                                                            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full font-bold text-xs sm:text-sm ${isLow
                                                                     ? 'bg-rose-50 text-rose-700 border border-rose-200'
                                                                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             <span
-                                                                className={`w-2 h-2 rounded-full ${
-                                                                    isLow ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'
-                                                                }`}
+                                                                className={`w-2 h-2 rounded-full ${isLow ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'
+                                                                    }`}
                                                             ></span>
                                                             <span>
                                                                 {item.stok} {item.satuan}
@@ -368,14 +351,15 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                                                         >
                                                             Edit
                                                         </button>
-                                                        {canManageItems && (
-                                                            <button
-                                                                onClick={() => handleDelete(item)}
-                                                                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs sm:text-sm border border-rose-200 transition"
-                                                            >
-                                                                Hapus
-                                                            </button>
-                                                        )}
+                                                        {(user.role === 'manager_gudang' ||
+                                                            user.role === 'staff_gudang') && (
+                                                                <button
+                                                                    onClick={() => handleDelete(item)}
+                                                                    className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs sm:text-sm border border-rose-200 transition"
+                                                                >
+                                                                    Hapus
+                                                                </button>
+                                                            )}
                                                     </td>
                                                 </tr>
                                             );
@@ -384,6 +368,11 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                                 </tbody>
                             </table>
                         </div>
+                        {items?.links && (
+                            <div className="p-4 border-t border-slate-100">
+                                <Pagination links={items.links} from={items.from} to={items.to} total={items.total} />
+                            </div>
+                        )}
                     </div>
                 ) : (
                     /* Stock Movement Log Table */

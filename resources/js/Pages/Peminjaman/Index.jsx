@@ -11,6 +11,7 @@ import {
     SearchIcon,
     XMarkIcon,
 } from '@/Components/Icons';
+import Pagination from '@/Components/Pagination';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
@@ -462,6 +463,16 @@ export default function PeminjamanIndex({
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    )}
+                    {loans?.links && (
+                        <div className="p-4 border-t border-slate-100">
+                            <Pagination
+                                links={loans.links}
+                                from={loans.from}
+                                to={loans.to}
+                                total={loans.total}
+                            />
                         </div>
                     )}
                 </div>
