@@ -9,21 +9,41 @@ import {
     PackageIcon,
     SearchIcon,
 } from '@/Components/Icons';
+import StatusBadge from '@/Components/StatusBadge';
+import Pagination from '@/Components/Pagination';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
 
-export default function Tracking({ items, branches, activeLoans = [], filters = {} }) {
+export default function Tracking({ items, branches = [], activeLoans = [], filters = {} }) {
     const [search, setSearch] = useState(filters.search || '');
+    const [selectedBranch, setSelectedBranch] = useState(filters.branch_id || 'ALL');
+    const [selectedRoom, setSelectedRoom] = useState(filters.room_id || 'ALL');
 
-    const handleSearch = (e) => {
-        e.preventDefault();
+    const handleFilter = (branch, room, query) => {
         router.get(
             route('barang.tracking'),
-            { search: search || undefined },
+            {
+                search: query || undefined,
+                branch_id: branch !== 'ALL' ? branch : undefined,
+                room_id: room !== 'ALL' ? room : undefined,
+            },
             { preserveState: true, preserveScroll: true }
         );
     };
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        handleFilter(selectedBranch, selectedRoom, search);
+    };
+
+    const availableRooms = useMemo(() => {
+        if (!selectedBranch || selectedBranch === 'ALL') {
+            return (branches || []).flatMap((b) => b.rooms || []);
+        }
+        const b = (branches || []).find((br) => br.id === parseInt(selectedBranch));
+        return b?.rooms || [];
+    }, [branches, selectedBranch]);
 
     const itemList = items.data || items;
 
@@ -116,8 +136,57 @@ export default function Tracking({ items, branches, activeLoans = [], filters = 
                     </div>
                 )}
 
-                {/* Search Bar */}
-                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-4">
+                {/* Search & Filter Bar */}
+                <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Filter Cabang */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Cabang:
+                            </span>
+                            <select
+                                value={selectedBranch}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSelectedBranch(val);
+                                    setSelectedRoom('ALL');
+                                    handleFilter(val, 'ALL', search);
+                                }}
+                                className="text-xs rounded-xl border border-slate-200 bg-slate-50 py-2 px-3 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                                <option value="ALL">Semua Cabang</option>
+                                {branches.map((b) => (
+                                    <option key={b.id} value={b.id}>
+                                        {b.nama_cabang} ({b.kode_cabang})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Filter Ruangan */}
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                Ruangan:
+                            </span>
+                            <select
+                                value={selectedRoom}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    setSelectedRoom(val);
+                                    handleFilter(selectedBranch, val, search);
+                                }}
+                                className="text-xs rounded-xl border border-slate-200 bg-slate-50 py-2 px-3 font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500/20"
+                            >
+                                <option value="ALL">Semua Ruangan</option>
+                                {availableRooms.map((r) => (
+                                    <option key={r.id} value={r.id}>
+                                        {r.nama_ruangan} ({r.kode_ruangan || '-'})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
                     <form onSubmit={handleSearch} className="relative flex-1 max-w-md">
                         <SearchIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
                         <input
@@ -128,9 +197,6 @@ export default function Tracking({ items, branches, activeLoans = [], filters = 
                             className="w-full pl-9 pr-4 py-2 text-xs sm:text-sm rounded-xl border border-slate-200 bg-slate-50/60 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                         />
                     </form>
-                    <div className="text-xs text-slate-500 font-semibold hidden sm:block">
-                        Menampilkan {itemList.length} data barang operasional
-                    </div>
                 </div>
 
                 {/* Items Tracking Cards */}
@@ -268,6 +334,18 @@ export default function Tracking({ items, branches, activeLoans = [], filters = 
                         );
                     })}
                 </div>
+
+                {/* Pagination */}
+                {items?.links && (
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
+                        <Pagination
+                            links={items.links}
+                            from={items.from}
+                            to={items.to}
+                            total={items.total}
+                        />
+                    </div>
+                )}
             </div>
         </AuthenticatedLayout>
     );

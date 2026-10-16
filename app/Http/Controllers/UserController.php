@@ -17,8 +17,8 @@ class UserController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
-        if (! $user->hasRole(['manager_gudang'])) {
-            abort(403, 'Hanya Manager Gudang yang berhak mengelola akun user.');
+        if (! $user->hasRole(['manager_gudang', 'manager_accounting', 'direktur_sdm'])) {
+            abort(403, 'Anda tidak memiliki hak akses untuk mengelola akun pengguna.');
         }
 
         $users = User::with('roleModel')->latest()->paginate(15);
@@ -32,6 +32,11 @@ class UserController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $currentUser = $request->user();
+        if (! $currentUser->hasRole(['manager_gudang', 'manager_accounting', 'direktur_sdm'])) {
+            abort(403, 'Anda tidak memiliki hak akses untuk menambahkan pengguna.');
+        }
+
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
@@ -40,6 +45,10 @@ class UserController extends Controller
             'nip' => 'nullable|string|max:50',
             'jabatan' => 'required|string|max:100',
         ]);
+
+        if ($request->role === 'direktur_sdm' && ! $currentUser->hasRole('direktur_sdm')) {
+            abort(403, 'Hanya Direktur SDM yang berhak membuat akun dengan role Direktur SDM.');
+        }
 
         $roleObj = Role::where('name', $request->role)->first();
 
@@ -54,7 +63,7 @@ class UserController extends Controller
         ]);
 
         AuditLogService::log(
-            $request->user(),
+            $currentUser,
             'CREATE_USER',
             User::class,
             $newUser->id,
@@ -68,11 +77,29 @@ class UserController extends Controller
 
     public function updateRole(Request $request, int $id): RedirectResponse
     {
+        $currentUser = $request->user();
+        if (! $currentUser->hasRole(['manager_gudang', 'manager_accounting', 'direktur_sdm'])) {
+            abort(403, 'Anda tidak memiliki hak akses untuk mengubah role pengguna.');
+        }
+
         $request->validate([
             'role' => 'required|exists:roles,name',
         ]);
 
         $targetUser = User::findOrFail($id);
+
+        if ($currentUser->id === $targetUser->id) {
+            abort(403, 'Anda tidak diperbolehkan mengubah role akun Anda sendiri.');
+        }
+
+        if ($request->role === 'direktur_sdm' && ! $currentUser->hasRole('direktur_sdm')) {
+            abort(403, 'Hanya Direktur SDM yang berhak menetapkan role Direktur SDM.');
+        }
+
+        if ($targetUser->hasRole('direktur_sdm') && ! $currentUser->hasRole('direktur_sdm')) {
+            abort(403, 'Hanya Direktur SDM yang berhak mengubah role akun Direktur SDM.');
+        }
+
         $roleObj = Role::where('name', $request->role)->first();
 
         $oldValues = $targetUser->toArray();
@@ -82,7 +109,7 @@ class UserController extends Controller
         ]);
 
         AuditLogService::log(
-            $request->user(),
+            $currentUser,
             'ASSIGN_ROLE',
             User::class,
             $targetUser->id ?? $id,

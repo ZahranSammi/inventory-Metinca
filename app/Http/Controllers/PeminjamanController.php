@@ -6,10 +6,12 @@ use App\Models\Branch;
 use App\Models\Item;
 use App\Models\ItemLoan;
 use App\Models\ItemLocation;
+use App\Models\Room;
 use App\Services\AuditLogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -110,15 +112,41 @@ class PeminjamanController extends Controller
             'tenggat_kembali.after_or_equal' => 'Tenggat kembali tidak boleh sebelum tanggal pinjam.',
         ]);
 
+        $fromRoom = Room::findOrFail($validated['from_room_id']);
+        if ((int) $fromRoom->branch_id !== (int) $validated['from_branch_id']) {
+            throw ValidationException::withMessages([
+                'from_room_id' => 'Ruangan asal yang dipilih tidak terdaftar pada cabang asal.',
+            ]);
+        }
+
+        if (! empty($validated['to_room_id'])) {
+            $toRoom = Room::findOrFail($validated['to_room_id']);
+            if ((int) $toRoom->branch_id !== (int) $validated['to_branch_id']) {
+                throw ValidationException::withMessages([
+                    'to_room_id' => 'Ruangan tujuan yang dipilih tidak terdaftar pada cabang tujuan.',
+                ]);
+            }
+        } else {
+            $validated['to_room_id'] = Room::where('branch_id', $validated['to_branch_id'])->orderBy('id')->value('id');
+        }
+
         DB::transaction(function () use ($validated, $user) {
             $year = date('Y');
-            $count = ItemLoan::whereYear('created_at', $year)->count() + 1;
+            $latestLoan = ItemLoan::where('nomor_peminjaman', 'like', "LOAN-{$year}-%")
+                ->lockForUpdate()
+                ->orderByDesc('id')
+                ->first();
+
+            if ($latestLoan && preg_match('/LOAN-\d{4}-(\d+)/', $latestLoan->nomor_peminjaman, $matches)) {
+                $count = ((int) $matches[1]) + 1;
+            } else {
+                $count = ItemLoan::whereYear('created_at', $year)->count() + 1;
+            }
             $nomorPeminjaman = 'LOAN-'.$year.'-'.str_pad((string) $count, 4, '0', STR_PAD_LEFT);
 
             $loan = ItemLoan::create([
                 ...$validated,
                 'nomor_peminjaman' => $nomorPeminjaman,
-                'to_room_id' => $validated['to_room_id'] ?? null,
                 'borrower_id' => $user->id,
                 'borrower_name' => $user->name,
                 'status' => 'DIAJUKAN',
@@ -138,13 +166,13 @@ class PeminjamanController extends Controller
         $user = $request->user();
         $this->authorizeReviewer($request);
 
-        $loan = ItemLoan::findOrFail($id);
+        $result = DB::transaction(function () use ($id, $user) {
+            $loan = ItemLoan::where('id', $id)->lockForUpdate()->firstOrFail();
 
-        if ($loan->status !== 'DIAJUKAN') {
-            return redirect()->back()->with('error', 'Hanya pengajuan berstatus DIAJUKAN yang dapat diproses.');
-        }
+            if ($loan->status !== 'DIAJUKAN') {
+                return ['success' => false, 'message' => 'Hanya pengajuan berstatus DIAJUKAN yang dapat diproses.'];
+            }
 
-        $approved = DB::transaction(function () use ($loan, $user) {
             $oldValues = $loan->toArray();
 
             $fromLocation = ItemLocation::where('item_id', $loan->item_id)
@@ -164,16 +192,18 @@ class PeminjamanController extends Controller
 
                 AuditLogService::log($user, 'LOAN_REJECTED_NO_STOCK', 'ItemLoan', $loan->id, $oldValues, $loan->fresh()->toArray());
 
-                return false;
+                return ['success' => false, 'message' => "Stok tidak mencukupi. Peminjaman {$loan->nomor_peminjaman} otomatis ditolak dan informasi dikirim ke Karyawan."];
             }
 
             $fromLocation->decrement('jumlah', $loan->jumlah);
 
-            if ($loan->to_room_id) {
+            $toRoomId = $loan->to_room_id ?: Room::where('branch_id', $loan->to_branch_id)->orderBy('id')->value('id');
+
+            if ($toRoomId) {
                 $toLocation = ItemLocation::firstOrCreate(
                     [
                         'item_id' => $loan->item_id,
-                        'room_id' => $loan->to_room_id,
+                        'room_id' => $toRoomId,
                     ],
                     [
                         'branch_id' => $loan->to_branch_id,
@@ -187,20 +217,21 @@ class PeminjamanController extends Controller
 
             $loan->update([
                 'status' => 'DIPINJAM',
+                'to_room_id' => $toRoomId,
                 'reviewed_by' => $user->id,
                 'reviewed_at' => now(),
             ]);
 
             AuditLogService::log($user, 'LOAN_APPROVED', 'ItemLoan', $loan->id, $oldValues, $loan->fresh()->toArray());
 
-            return true;
+            return ['success' => true, 'message' => "Peminjaman {$loan->nomor_peminjaman} disetujui dan dicatat. Barang diserahkan ke cabang tujuan."];
         });
 
-        if (! $approved) {
-            return redirect()->back()->with('error', "Stok tidak mencukupi. Peminjaman {$loan->nomor_peminjaman} otomatis ditolak dan informasi dikirim ke Karyawan.");
+        if (! $result['success']) {
+            return redirect()->back()->with('error', $result['message']);
         }
 
-        return redirect()->back()->with('success', "Peminjaman {$loan->nomor_peminjaman} disetujui dan dicatat. Barang diserahkan ke cabang tujuan.");
+        return redirect()->back()->with('success', $result['message']);
     }
 
     /**
@@ -217,38 +248,64 @@ class PeminjamanController extends Controller
             'catatan_review.required' => 'Alasan penolakan wajib diisi.',
         ]);
 
-        $loan = ItemLoan::findOrFail($id);
+        $result = DB::transaction(function () use ($id, $user, $validated) {
+            $loan = ItemLoan::where('id', $id)->lockForUpdate()->firstOrFail();
 
-        if ($loan->status !== 'DIAJUKAN') {
-            return redirect()->back()->with('error', 'Hanya pengajuan berstatus DIAJUKAN yang dapat ditolak.');
+            if ($loan->status !== 'DIAJUKAN') {
+                return ['success' => false, 'message' => 'Hanya pengajuan berstatus DIAJUKAN yang dapat ditolak.'];
+            }
+
+            $oldValues = $loan->toArray();
+
+            $loan->update([
+                'status' => 'DITOLAK',
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now(),
+                'catatan_review' => $validated['catatan_review'],
+            ]);
+
+            AuditLogService::log($user, 'LOAN_REJECTED', 'ItemLoan', $loan->id, $oldValues, $loan->fresh()->toArray());
+
+            return ['success' => true, 'message' => "Peminjaman {$loan->nomor_peminjaman} ditolak dan alasan diteruskan ke Karyawan."];
+        });
+
+        if (! $result['success']) {
+            return redirect()->back()->with('error', $result['message']);
         }
 
-        $oldValues = $loan->toArray();
-
-        $loan->update([
-            'status' => 'DITOLAK',
-            'reviewed_by' => $user->id,
-            'reviewed_at' => now(),
-            'catatan_review' => $validated['catatan_review'],
-        ]);
-
-        AuditLogService::log($user, 'LOAN_REJECTED', 'ItemLoan', $loan->id, $oldValues, $loan->fresh()->toArray());
-
-        return redirect()->back()->with('success', "Peminjaman {$loan->nomor_peminjaman} ditolak dan alasan diteruskan ke Karyawan.");
+        return redirect()->back()->with('success', $result['message']);
     }
 
     public function kembalikan(Request $request, int $id): RedirectResponse
     {
         $this->authorizeReviewer($request);
 
-        $loan = ItemLoan::findOrFail($id);
+        $result = DB::transaction(function () use ($id, $request) {
+            $loan = ItemLoan::where('id', $id)->lockForUpdate()->firstOrFail();
 
-        if ($loan->status !== 'DIPINJAM') {
-            return redirect()->back()->with('error', 'Hanya peminjaman berstatus DIPINJAM yang dapat dikembalikan.');
-        }
+            if ($loan->status !== 'DIPINJAM') {
+                return ['success' => false, 'message' => 'Hanya peminjaman berstatus DIPINJAM yang dapat dikembalikan.'];
+            }
 
-        DB::transaction(function () use ($loan, $request) {
             $oldValues = $loan->toArray();
+
+            $toRoomId = $loan->to_room_id ?: Room::where('branch_id', $loan->to_branch_id)->orderBy('id')->value('id');
+
+            if ($toRoomId) {
+                $toLocation = ItemLocation::where('item_id', $loan->item_id)
+                    ->where('room_id', $toRoomId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $toLocation || $toLocation->jumlah < $loan->jumlah) {
+                    $tersedia = $toLocation?->jumlah ?? 0;
+                    throw ValidationException::withMessages([
+                        'loan' => "Jumlah barang di lokasi tujuan ({$tersedia}) tidak mencukupi untuk dikembalikan ({$loan->jumlah} unit).",
+                    ]);
+                }
+
+                $toLocation->decrement('jumlah', $loan->jumlah);
+            }
 
             $fromLocation = ItemLocation::firstOrCreate(
                 [
@@ -263,16 +320,6 @@ class PeminjamanController extends Controller
             );
             $fromLocation->increment('jumlah', $loan->jumlah);
 
-            if ($loan->to_room_id) {
-                $toLocation = ItemLocation::where('item_id', $loan->item_id)
-                    ->where('room_id', $loan->to_room_id)
-                    ->first();
-                if ($toLocation) {
-                    $newJumlah = max(0, $toLocation->jumlah - $loan->jumlah);
-                    $toLocation->update(['jumlah' => $newJumlah]);
-                }
-            }
-
             $loan->update([
                 'status' => 'SELESAI',
                 'tanggal_kembali' => now()->format('Y-m-d'),
@@ -286,9 +333,15 @@ class PeminjamanController extends Controller
                 $oldValues,
                 $loan->fresh()->toArray()
             );
+
+            return ['success' => true, 'message' => 'Barang pinjaman telah berhasil dikembalikan ke cabang dan ruangan semula.'];
         });
 
-        return redirect()->back()->with('success', 'Barang pinjaman telah berhasil dikembalikan ke cabang dan ruangan semula.');
+        if (! $result['success']) {
+            return redirect()->back()->with('error', $result['message']);
+        }
+
+        return redirect()->back()->with('success', $result['message']);
     }
 
     private function authorizeReviewer(Request $request): void

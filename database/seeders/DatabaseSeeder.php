@@ -332,7 +332,7 @@ class DatabaseSeeder extends Seeder
             'item_id' => $item6->id, // Bangku Putar Produksi
             'branch_id' => $branchJaktim->id,
             'room_id' => $roomJaktimProduksi->id,
-            'jumlah' => 45,
+            'jumlah' => 35, // Saldo awal 45, dikurangi 10 unit yang sedang berstatus DIPINJAM ke Tambun
             'kondisi' => 'Baik',
             'keterangan' => 'Bangku line produksi shift 1 & 2',
         ]);
@@ -350,9 +350,9 @@ class DatabaseSeeder extends Seeder
             'item_id' => $item6->id, // Bangku
             'branch_id' => $branchTambun->id,
             'room_id' => $roomTambunProduksi->id,
-            'jumlah' => 30,
+            'jumlah' => 40, // Saldo awal 30, ditambah 10 unit pinjaman aktif dari Jaktim
             'kondisi' => 'Baik',
-            'keterangan' => 'Bangku kerja operator Tambun',
+            'keterangan' => 'Bangku kerja operator Tambun (termasuk 10 unit pinjaman Jaktim)',
         ]);
 
         // Cabang Tambun - Ruangan Accounting
