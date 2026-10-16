@@ -8,7 +8,14 @@ class StoreItemRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->hasRole(['staff_gudang', 'inventarisir', 'manager_gudang']);
+        return $this->user()->hasRole([
+            'staff_gudang',
+            'inventarisir',
+            'manager_gudang',
+            'staff_accounting',
+            'manager_accounting',
+            'direktur_sdm',
+        ]);
     }
 
     public function rules(): array
