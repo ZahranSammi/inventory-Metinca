@@ -17,6 +17,29 @@ import { useMemo, useState } from 'react';
 
 export default function BarangIndex({ items, categories, stockMovements }) {
     const user = usePage().props.auth.user;
+    const canManageItems = [
+        'staff_accounting',
+        'manager_accounting',
+        'direktur_sdm',
+        'staff_gudang',
+        'inventarisir',
+        'manager_gudang',
+    ].includes(user?.role);
+
+    const categoryOptions = useMemo(() => {
+        const defaultCats = [
+            'Alat Tulis Kantor',
+            'Furniture & Perabot',
+            'Perlengkapan IT',
+            'Peralatan Operasional',
+            'Arsip & Dokumen',
+            'Peralatan Komputer',
+            'Perlengkapan Kebersihan',
+            'Perlengkapan Umum',
+        ];
+        const serverCats = Array.isArray(categories) ? categories : [];
+        return Array.from(new Set([...defaultCats, ...serverCats]));
+    }, [categories]);
 
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
@@ -147,9 +170,7 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                             Kelola data barang operasional kantor, pemantauan batas stok minimum, dan audit mutasi fisik.
                         </p>
                     </div>
-                    {(user.role === 'staff_gudang' ||
-                        user.role === 'inventarisir' ||
-                        user.role === 'manager_gudang') && (
+                    {canManageItems && (
                         <button
                             onClick={handleCreateOpen}
                             className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-xs transition transform hover:-translate-y-0.5"
@@ -221,6 +242,19 @@ export default function BarangIndex({ items, categories, stockMovements }) {
 
                     {activeTab === 'master' && (
                         <div className="flex flex-wrap items-center gap-3">
+                            <select
+                                value={selectedCategory}
+                                onChange={(e) => setSelectedCategory(e.target.value)}
+                                className="rounded-xl border border-slate-200 text-sm py-2.5 px-3.5 bg-white text-slate-700 font-medium focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                            >
+                                <option value="ALL">Semua Kategori</option>
+                                {categoryOptions.map((cat) => (
+                                    <option key={cat} value={cat}>
+                                        {cat}
+                                    </option>
+                                ))}
+                            </select>
+
                             <button
                                 onClick={() => setOnlyLowStock(!onlyLowStock)}
                                 className={`px-4 py-2.5 rounded-xl text-sm font-semibold border transition flex items-center gap-2 ${
@@ -334,8 +368,7 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                                                         >
                                                             Edit
                                                         </button>
-                                                        {(user.role === 'manager_gudang' ||
-                                                            user.role === 'staff_gudang') && (
+                                                        {canManageItems && (
                                                             <button
                                                                 onClick={() => handleDelete(item)}
                                                                 className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold text-xs sm:text-sm border border-rose-200 transition"
@@ -444,14 +477,15 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                                 <div>
                                     <label className="block font-bold text-slate-700 mb-1.5">Kategori *</label>
                                     <select
-                                        className="w-full rounded-xl border border-slate-200 text-sm py-2.5 px-3.5 bg-white"
+                                        className="w-full rounded-xl border border-slate-200 text-sm py-2.5 px-3.5 bg-white font-medium text-slate-800"
                                         value={itemForm.data.kategori}
                                         onChange={(e) => itemForm.setData('kategori', e.target.value)}
                                     >
-                                        <option value="Alat Tulis Kantor">Alat Tulis Kantor (ATK)</option>
-                                        <option value="Peralatan Komputer">Peralatan Komputer</option>
-                                        <option value="Perlengkapan Kebersihan">Perlengkapan Kebersihan</option>
-                                        <option value="Perlengkapan Umum">Perlengkapan Umum</option>
+                                        {categoryOptions.map((cat) => (
+                                            <option key={cat} value={cat}>
+                                                {cat}
+                                            </option>
+                                        ))}
                                     </select>
                                 </div>
                             </div>
@@ -571,7 +605,21 @@ export default function BarangIndex({ items, categories, stockMovements }) {
                                 />
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block font-bold text-slate-700 mb-1.5">Kategori *</label>
+                                    <select
+                                        className="w-full rounded-xl border border-slate-200 text-sm py-2.5 px-3.5 bg-white font-medium text-slate-800"
+                                        value={itemForm.data.kategori}
+                                        onChange={(e) => itemForm.setData('kategori', e.target.value)}
+                                    >
+                                        {categoryOptions.map((cat) => (
+                                            <option key={cat} value={cat}>
+                                                {cat}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                                 <div>
                                     <label className="block font-bold text-slate-700 mb-1.5">Satuan *</label>
                                     <input

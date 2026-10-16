@@ -123,7 +123,7 @@ class BarangOperasionalController extends Controller
     {
         $user = $request->user();
 
-        if (! $user->hasRole(['manager_gudang', 'staff_gudang'])) {
+        if (! $user->hasRole(['manager_gudang', 'staff_gudang', 'manager_accounting', 'staff_accounting', 'direktur_sdm'])) {
             abort(403, 'Anda tidak berhak menghapus data master barang.');
         }
 
@@ -148,7 +148,7 @@ class BarangOperasionalController extends Controller
     {
         $user = $request->user();
 
-        if (! $user->hasRole(['staff_gudang', 'inventarisir', 'manager_gudang'])) {
+        if (! $user->hasRole(['staff_gudang', 'inventarisir', 'manager_gudang', 'staff_accounting', 'manager_accounting', 'direktur_sdm'])) {
             abort(403, 'Anda tidak berhak menyesuaikan stok.');
         }
 

@@ -24,7 +24,14 @@ export default function PeminjamanIndex({
 }) {
     const user = usePage().props.auth.user;
     const isKaryawan = user?.role === 'karyawan';
-    const isReviewer = ['staff_gudang', 'manager_gudang'].includes(user?.role);
+    const isReviewer = [
+        'staff_accounting',
+        'manager_accounting',
+        'direktur_sdm',
+        'staff_gudang',
+        'manager_gudang',
+        'inventarisir',
+    ].includes(user?.role);
 
     const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [selectedStatus, setSelectedStatus] = useState(filters.status || 'ALL');

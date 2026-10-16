@@ -23,10 +23,14 @@ export default function PendataanRuangan({
     filters = {},
 }) {
     const user = usePage().props.auth.user;
-    const canManage =
-        user.role === 'staff_gudang' ||
-        user.role === 'inventarisir' ||
-        user.role === 'manager_gudang';
+    const canManage = [
+        'staff_accounting',
+        'manager_accounting',
+        'direktur_sdm',
+        'staff_gudang',
+        'inventarisir',
+        'manager_gudang',
+    ].includes(user?.role);
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingLocation, setEditingLocation] = useState(null);
